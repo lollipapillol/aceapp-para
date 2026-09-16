@@ -1,0 +1,104 @@
+name: Deploy Aceapp Parasitology to Netlify
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Aceapp-Parasitology-Privacy-Account-Lifecycle-v42.zip"
+      - ".github/workflows/deploy-parasitology.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ZIP_FILE: Aceapp-Parasitology-Privacy-Account-Lifecycle-v42.zip
+  DEPLOY_DIR: deploy
+
+jobs:
+  deploy:
+    name: Unzip and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify ZIP exists
+        run: |
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: $ZIP_FILE was not found."
+            exit 1
+          fi
+
+          echo "Found deployment ZIP:"
+          ls -lh "$ZIP_FILE"
+
+      - name: Unzip Aceapp
+        run: |
+          rm -rf "$DEPLOY_DIR"
+          mkdir -p "$DEPLOY_DIR"
+
+          unzip -q "$ZIP_FILE" -d "$DEPLOY_DIR"
+
+          echo "Deployment files:"
+          find "$DEPLOY_DIR" -maxdepth 2 -type f | sort
+
+      - name: Verify Aceapp package
+        run: |
+          test -f "$DEPLOY_DIR/index.html" || {
+            echo "ERROR: index.html is missing."
+            exit 1
+          }
+
+          test -f "$DEPLOY_DIR/sw.js" || {
+            echo "ERROR: sw.js is missing."
+            exit 1
+          }
+
+          test -f "$DEPLOY_DIR/manifest.webmanifest" || {
+            echo "ERROR: manifest.webmanifest is missing."
+            exit 1
+          }
+
+          test -f "$DEPLOY_DIR/release-manifest-v42.json" || {
+            echo "ERROR: release-manifest-v42.json is missing."
+            exit 1
+          }
+
+          test -f "$DEPLOY_DIR/aceapp_asset_integrity_manifest_v42.json" || {
+            echo "ERROR: asset integrity manifest is missing."
+            exit 1
+          }
+
+          grep -q "ACEAPP_BUILD='v42-rc1'" "$DEPLOY_DIR/index.html" || {
+            echo "ERROR: index.html is not Aceapp Parasitology v42."
+            exit 1
+          }
+
+          echo "Aceapp v42 package verification passed."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Netlify CLI
+        run: |
+          npm install --no-save netlify-cli
+
+      - name: Deploy to Netlify production
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npx netlify deploy \
+            --dir="$DEPLOY_DIR" \
+            --prod \
+            --message="Aceapp Parasitology v42 - GitHub ${GITHUB_SHA}"
+
+      - name: Deployment complete
+        run: |
+          echo "Aceapp Parasitology v42 deployed successfully."
